@@ -1,0 +1,6 @@
+# Keep local scaffolding output out of version control.
+# Example wikis created for manual testing (see scripts/).
+/tmp-okm-*
+*.pyc
+__pycache__/
+.DS_Store
