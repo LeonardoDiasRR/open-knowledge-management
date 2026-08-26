@@ -28,9 +28,14 @@ Then ask the agent: **"create a wiki for me"** — it will ask for the root path
 | Task | Behavior |
 |------|----------|
 | **First run** | Asks for the wiki root path, saves it, scaffolds `AGENTS.md` + structure |
+| **Adopt existing** | Reuse a consolidated base: create only missing dirs, never overwrite your files; defers to an existing `AGENTS.md` |
 | **Ingest** | Reads sources (docs, web research) → source pages + entity/​concept pages + wikilinks, updates index/log |
 | **Query** | Searches the wiki and answers with `[[wikilink]]` citations |
 | **Lint** | Health-check: orphan pages, stale claims, broken links, data gaps |
+
+> **Reusing an existing wiki:** point `init` at a directory that already has
+> content — the skill **adopts** it (creates only what's missing, never
+> overwrites), and if that base has its own `AGENTS.md` the skill defers to it.
 
 ## Directory structure the skill scaffolds
 

@@ -68,13 +68,32 @@ Reserved names: `index.md` and `log.md` are reserved and MUST NOT be used for co
 
 ## Init — first run
 
-Use a clean, deterministic scaffold. **Prefer `scripts/scaffold.py --root <path>` when the `scripts/` directory is present.** If it is absent (e.g. `hermes skills install` copied only `SKILL.md`), scaffold the tree yourself with your file tools:
+Ask where to store the wiki, then **fresh scaffold** or **adopt** depending on
+the target. **Prefer `scripts/scaffold.py <--root> [--adopt]` when the `scripts/`
+directory is present.** If it is absent (e.g. `hermes skills install` copied only
+`SKILL.md`), do the equivalent with your file tools.
 
-1. Ask the user where to store the wiki (**full absolute path** of the root directory). If they don't give one, propose a sensible default (e.g. `~/second-brain` or `~/wiki`) and wait for confirmation. Do not guess silently.
-2. Create the folder structure above and the skeleton files.
-3. Write a **self-contained `AGENTS.md`** at the root that encodes the full governing rules (this skill's content, compressed to its essentials: the three operations, page format, index/log rules, and the reserved-filenames rule). It must be able to drive the wiki without this skill loaded.
-4. Write `data/config.json` with the chosen root.
-5. Report the created tree and tell the user the wiki is ready.
+1. Ask the user for the **full absolute path** of the root directory. If they
+   don't give one, propose a sensible default and wait for confirmation. Do not
+   guess silently.
+2. Inspect the target:
+   - **Missing OR empty** → fresh scaffold: create the structure and skeleton
+     files exactly as in "Folder structure", including a self-contained
+     `AGENTS.md`.
+   - **Exists with content** → **adopt** it (reuse an existing knowledge base):
+     - Create **only** the directories that are missing (`raw/`, `output/`, and
+       any `wiki/*` sections). **Never overwrite** existing files.
+     - If the target already has its own `AGENTS.md`, **keep it** and defer to
+       its conventions (it takes precedence over this skill's generic rules
+       for that wiki, exactly like any project's governing file).
+     - Only write this skill's `index.md`/`log.md` skeletons for directories
+       that are missing them; leave existing ones untouched.
+     - If the existing content isn't obviously OKF-structured, first **survey
+       it** (list files, read an `index.md`/`AGENTS.md` if present) so you
+       understand the layout before touching anything.
+3. Write `data/config.json` with the chosen root (safe on adopt — it's a pointer).
+4. Report what was created (fresh) or only added/missing (adopt), and tell the
+   user the wiki is ready and whether it was fresh or adopted.
 
 The `AGENTS.md` you write MUST include the page format, operations (ingest/query/lint), index/log rules, and the OKF frontmatter field reference from `references/okf-conventions.md` (or from below when references are absent).
 

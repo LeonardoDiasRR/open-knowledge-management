@@ -150,25 +150,53 @@ def write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def scaffold(root: Path) -> None:
-    if root.exists() and any(root.iterdir()):
-        print(f"error: {root} is not empty; refusing to overwrite", file=sys.stderr)
+def write_if_missing(path: Path, content: str) -> bool:
+    """Write only if the file does not yet exist. Used in adopt mode so the
+    skill never overwrites a user's existing content. Returns True on write."""
+    if path.exists():
+        return False
+    write(path, content)
+    return True
+
+
+def scaffold(root: Path, adopt: bool = False) -> None:
+    existing_content = root.exists() and any(root.iterdir())
+    if existing_content and not adopt:
+        print(f"error: {root} is not empty; use --adopt to reuse it", file=sys.stderr)
         sys.exit(1)
 
-    write(root / "AGENTS.md", AGENTS_MD)
-    write(root / "index.md", INDEX_SKELETON.format(title="Index", section="Pages"))
-    write(root / "log.md", LOG_SKELETON.format(title="Log"))
+    # AGENTS.md: always write for a fresh scaffold; keep any user one on adopt.
+    write_if_missing(root / "AGENTS.md", AGENTS_MD) if adopt else write(root / "AGENTS.md", AGENTS_MD)
+    if adopt:
+        write_if_missing(root / "index.md", INDEX_SKELETON.format(title="Index", section="Pages"))
+        write_if_missing(root / "log.md", LOG_SKELETON.format(title="Log"))
+    else:
+        write(root / "index.md", INDEX_SKELETON.format(title="Index", section="Pages"))
+        write(root / "log.md", LOG_SKELETON.format(title="Log"))
+
+    # Directories are idempotent — create only what is missing either way.
     (root / "raw").mkdir(parents=True, exist_ok=True)
     (root / "output").mkdir(parents=True, exist_ok=True)
     wiki = root / "wiki"
-    wiki.mkdir()
-    write(wiki / "index.md", INDEX_SKELETON.format(title="Wiki Index", section="Sections"))
-    write(wiki / "log.md", LOG_SKELETON.format(title="Wiki Log"))
-    for section in SECTIONS:
+    wiki.mkdir(exist_ok=True)
+
+    # Per-directory index/log: never clobber on adopt.
+    def ensure_section(wiki: Path, section: str) -> None:
         title = SECTION_TITLES[section]
-        write(wiki / section / "index.md", INDEX_SKELETON.format(title=title, section=title))
-        write(wiki / section / "log.md", LOG_SKELETON.format(title=title))
-    # Self-contained config.
+        w = wiki / section
+        w.mkdir(parents=True, exist_ok=True)
+        write_if_missing(w / "index.md", INDEX_SKELETON.format(title=title, section=title))
+        write_if_missing(w / "log.md", LOG_SKELETON.format(title=title))
+
+    ensure_section(wiki, "sources")
+    ensure_section(wiki, "entities")
+    ensure_section(wiki, "concepts")
+    ensure_section(wiki, "synthesis")
+    # ../wiki index/log at the wiki-level: only upgrade if missing.
+    write_if_missing(wiki / "index.md", INDEX_SKELETON.format(title="Wiki Index", section="Sections"))
+    write_if_missing(wiki / "log.md", LOG_SKELETON.format(title="Wiki Log"))
+
+    # Self-contained config (a pointer, safe to write/update on adopt).
     write(root / "data" / "config.json", json.dumps({"wiki_root": str(root)}, indent=2) + "\n")
 
 
@@ -186,9 +214,12 @@ def print_tree(root: Path) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Scaffold an OKF LLM-Wiki.")
     ap.add_argument("--root", required=True, help="Absolute path of the wiki root.")
+    ap.add_argument("--adopt", action="store_true",
+                    help="Reuse an existing non-empty directory: create only missing "
+                         "dirs/index/log and never overwrite existing content.")
     args = ap.parse_args()
     root = Path(args.root).expanduser().resolve()
-    scaffold(root)
+    scaffold(root, adopt=args.adopt)
     print_tree(root)
 
 
