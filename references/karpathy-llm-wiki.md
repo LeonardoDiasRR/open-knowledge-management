@@ -23,7 +23,7 @@ writes back into as it works.
 
 ## How it maps to this skill
 
-| Karpathy idea | open-knowledge-management |
+| Karpathy idea | openkm |
 |---|---|
 | Persistent Markdown memory | The wiki root (`raw/` + `wiki/`) |
 | Agent reads it each session | Query/inject from `index.md` + pages |

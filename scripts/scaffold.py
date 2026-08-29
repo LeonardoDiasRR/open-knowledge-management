@@ -48,7 +48,7 @@ tags: [tag1, tag2]
 sources:
   - id: source-file.md
     resource: path/or/url/to/source
-generated: {{ by: open-knowledge-management/1.0.0, at: {iso} }}
+generated: {{ by: openkm/1.0.0, at: {iso} }}
 ---
 
 # {Title}

@@ -42,7 +42,7 @@ sources:
   - id: /raw/sales/2026-q2-report.pdf
     resource: /raw/sales/2026-q2-report.pdf
     title: 2026 Q2 Sales Report
-generated: { by: open-knowledge-management/1.0.0, at: 2026-08-26T00:00:00-04:00 }
+generated: { by: openkm/1.0.0, at: 2026-08-26T00:00:00-04:00 }
 ---
 ```
 

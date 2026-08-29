@@ -1,5 +1,5 @@
 ---
-name: open-knowledge-management
+name: openkm
 description: "Create and manage a personal LLM-Wiki (Karpathy) with files in the Google Open Knowledge Format (OKF). First run asks for the wiki root path, saves it and scaffolds AGENTS.md + structure; then ingests, queries and lints the wiki. Use whenever the user wants to build, maintain or search a markdown wiki / knowledge base / second brain, ingest documents or web research into it, or health-check it."
 version: 1.0.0
 platforms: [linux, macos, windows]
@@ -116,7 +116,7 @@ sources:
     author: <producer>/<ver> | human:<id> | process:<id>
     usage_count: 12
     last_modified: 2026-08-26T00:00:00-04:00
-generated: { by: open-knowledge-management/1.0.0, at: 2026-08-26T00:00:00-04:00 }
+generated: { by: openkm/1.0.0, at: 2026-08-26T00:00:00-04:00 }
 verified:
   - { by: human:owner, at: 2026-08-26T12:00:00-04:00 }
 ---

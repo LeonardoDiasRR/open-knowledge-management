@@ -16,7 +16,7 @@ On first use, the skill asks you **where** to store the wiki, saves that path, a
 
 ```
 hermes skills install --category note-taking --yes \
-  https://raw.githubusercontent.com/LeonardoDiasRR/open-knowledge-management/main/SKILL.md
+  https://raw.githubusercontent.com/LeonardoDiasRR/OpenKM/main/SKILL.md
 ```
 
 > Note: Hermes' `skills install` copies only `SKILL.md`; the first-run flow is fully described inside it, so it works standalone. For the deterministic scaffold, `scaffold.py` + templates, clone this repo or copy the `scripts/` directory into the installed skill folder.
