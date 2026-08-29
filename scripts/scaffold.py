@@ -71,6 +71,9 @@ wiki over time. You never improvise structure. Follow these rules exactly.
   - `wiki/entities/` — people, organizations, products, tools
   - `wiki/concepts/` — ideas, frameworks, theories, patterns
   - `wiki/synthesis/` — comparisons, analyses, cross-cutting themes
+- **database/data.duckdb** — derived tabular data, created on demand by
+  ingestion. It is separate from immutable `raw/`; do not create it while
+  scaffolding and do not treat `database/` as a Markdown wiki section.
 - **output/** — reports, query results, and generated artifacts.
 
 Every `wiki/*` subdirectory keeps its own `index.md` (catalog) and `log.md`
@@ -103,16 +106,76 @@ sources_verified_by: human:owner   # optional trust signal
 ## Operations
 
 ### Ingest
-1. Read the source completely. 2. Discuss takeaways with the user.
-3. Save the original under `raw/` (immutable). 4. Create a Source Summary page
-in `wiki/sources/`. 5. Create/update `entities/` and `concepts/` pages.
-6. Cross-link with `[[wikilinks]]`. 7. Update every affected `index.md`.
-8. Append a newest-first entry to the relevant `log.md`.
+1. Read the source completely and copy the original under `raw/` before any
+   helper call. `raw/` is immutable: never modify or replace the copied source.
+2. Discuss takeaways with the user and create its Source Summary page in
+   `wiki/sources/`.
+3. For genuinely tabular CSV, TSV, and XLSX sources, persist automatically to
+   the derived `database/data.duckdb` after inspection. Create one table per
+   logical dataset, or one table per tabular XLSX worksheet. Show the result
+   afterward, including the first five rows and the source page.
+4. Inspect ordinary documents for visual tables and tabulatable text. These
+   candidates are approval-gated: propose the logical dataset, schema, and
+   first five rows, and persist only after explicit approval. A rejected
+   proposal must not create a table.
+ 5. Add `source_id`, `source_page`, and `source_section` to every row; add
+    `source_sheet` for Excel rows. Keep ambiguous values as text when possible,
+    otherwise use `NULL` and record the caveat in the source page.
+    `source_id` remains required and must never be `None`/`NULL`; set
+    non-applicable `source_page`, `source_section`, and `source_sheet` fields to
+    `None`/`NULL`.
+6. Exclude formula-derived columns and aggregate cells from DuckDB while
+   retaining their input columns. Document the original formula and equivalent
+   DuckDB SQL only in the Source Summary page, never in the database or its
+   catalog.
+ 7. On reingestion, reconstruct only the tables owned by that source; do not
+    duplicate rows or change tables owned by other sources.
+8. Create/update `entities/` and `concepts/` pages. Cross-link with
+    `[[wikilinks]]`. Update every affected `index.md` and append a newest-first
+    entry to the relevant `log.md`.
+
+### Tabular persistence contract
+ 1. Before persistence, inspect the complete copied source. A missing or
+   unreadable file, invalid raw/source paths, invalid JSON, malformed input
+   (including CSV/TSV/XLSX), missing DuckDB support, unsupported extension, or
+   non-tabular input is an explicit failure/status. Do not create a table or
+   claim that data was saved. A non-tabular direct file follows the
+   ordinary-document candidate workflow instead of automatic persistence.
+2. Persist approved datasets to `database/data.duckdb` in one transaction. A
+   persist or rebuild commits only after every data table, source catalog row,
+   and table catalog row succeeds. On any parse, validation, dependency, or
+   write failure, roll back the transaction, leave no partial writes, report the
+   failure and source ID, and never claim success.
+3. Rebuilds replace only the tables and catalog rows owned by the source ID,
+   atomically. Remove the old source-owned data and write the replacement in
+   the same transaction; preserve every other source and do not duplicate rows.
+ 4. A Source Summary in `wiki/sources/` is required for every persisted or
+   proposed dataset. It must include source metadata and resource provenance,
+   the database path `database/data.duckdb` when applicable, extraction status,
+   a table inventory, each table's schema and row count, exactly the first five
+   rows (or all rows when fewer exist), row provenance, formula notes, and
+   caveats. Formula notes document excluded formula-derived or aggregate
+   columns, their original formulas, retained input columns, and an equivalent
+   DuckDB SQL expression when safe; when translation is unsafe, record exactly
+   `no equivalent query was generated`. Formula definitions and cached formula
+   values never go into DuckDB.
 
 ### Query
-1. Read the root `index.md` to find relevant pages. 2. Read them.
-3. Synthesize an answer with `[[wikilink]]` citations. 4. Offer to save durable
-answers in `wiki/synthesis/` (and then update index/log).
+1. The agent is the only query interface. Do not expose a SQL CLI or database
+   UI to users. Read the root `index.md`, relevant catalog, and source page.
+2. Use a read-only helper query against `database/data.duckdb`; never write SQL
+   data during a query.
+3. Synthesize an answer with `[[wikilink]]` citations and preserve source
+   context. Offer to save durable answers in `wiki/synthesis/` (and then update
+   index/log).
+4. Locate the relevant Source Summary and table inventory before querying. A
+   missing table, missing DuckDB support, unavailable database, or query
+   failure is an explicit failure/status; do not claim a result or success.
+5. Queries must be single, parameterized, read-only statements (`SELECT`,
+   read-only `WITH`, `DESCRIBE`, or `SHOW`) executed through the helper in
+   read-only mode. Reject unsafe or mutating queries, including multiple
+   statements and `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP`, `ALTER`,
+   `COPY`, `ATTACH`, `INSTALL`, `LOAD`, `EXPORT`, `VACUUM`, or `PRAGMA`.
 
 ### Lint
 Scan for contradictions, stale claims, orphan pages (no inbound links), missing
@@ -129,6 +192,13 @@ concept pages, and weak cross-references. Report and offer to fix. Log the pass.
 8. When asked a question, search the wiki first.
 9. Prefer updating existing pages over creating new ones.
 10. Keep index entries one line, under 120 characters.
+ 11. Report helper failures, invalid JSON, invalid raw/source paths,
+    unsupported formats, malformed or unreadable input, rejected proposals,
+    non-tabular input, missing tables, unsafe queries, rollback, and transaction
+    failures honestly, with an explicit failure/status. Never claim a
+    successful write or query when the data or result was not produced; a
+    failed persistence or rebuild must leave no partial write.
+12. Never invent values or provenance, and never modify immutable raw sources.
 """
 
 # ---------------------------------------------------------------------------

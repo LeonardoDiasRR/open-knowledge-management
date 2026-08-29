@@ -19,7 +19,10 @@ Build and maintain a personal, queryable **LLM-Wiki** following [Andrej Karpathy
 |------|-----|
 | User wants to *start* a wiki / second brain | **Init / First run** (below) |
 | Process a local file (PDF, image, text) or web research into the wiki | **Ingest** |
+| Persist a genuinely tabular CSV, TSV, or XLSX source | **Ingest** with automatic DuckDB persistence (below) |
+| Extract a table or tabulatable text from an ordinary document | **Ingest** with explicit approval before DuckDB persistence (below) |
 | Ask a question against the wiki | **Query** |
+| Ask a question requiring tabular data | **Query** through the agent's read-only DuckDB helper (below) |
 | Health-check the wiki (orphans, stale claims, broken refs) | **Lint** |
 | Find which wiki root you manage | Read the config (below) |
 
@@ -35,6 +38,8 @@ The wiki root path is persisted in **`data/config.json`** inside this skill's di
 - **Write it** during Init so future runs skip the prompt.
 - If `data/config.json` is missing **or** `wiki_root` is `null`, you are on **first run** — do Init.
 - If the skill directory is read-only and you cannot write the config, fall back to the environment variable **`OKM_WIKI_ROOT`** (prefer it if set), else fall back to prompting **each operation** until the user also points you at a writable copy. Prefer `OKM_WIKI_ROOT` over prompting when both apply. Never fabricate a path.
+- Derived tabular data always lives at **`<wiki-root>/database/data.duckdb`**. Create the `database/` directory and DuckDB file on demand; do not add a second persisted configuration key for this fixed relative path.
+- `database/data.duckdb` is derived data separate from the immutable `raw/` area. Keep the Markdown Source Summary in `wiki/sources/` as the user-facing source description and record the table inventory there.
 
 ## Folder structure
 
@@ -46,6 +51,8 @@ The wiki root is a directory of Markdown files with YAML frontmatter. Every `wik
 ├── index.md             # Root index (OKF §8)
 ├── log.md               # Root log, newest-first (OKF §9)
 ├── raw/                 # Immutable source materials (never modified)
+├── database/             # Derived data, created on demand
+│   └── data.duckdb       # DuckDB tables for persisted tabular datasets
 ├── wiki/
 │   ├── index.md         # Lists the four sections
 │   ├── log.md
@@ -63,6 +70,8 @@ The wiki root is a directory of Markdown files with YAML frontmatter. Every `wik
 │       └── log.md
 └── output/              # reports, query results, generated artifacts
 ```
+
+`database/` is a derived-data location, not a Markdown wiki section. Do not create a `wiki/tables/` directory. Keep `wiki/sources/` for one Source Summary page per ingested source, and preserve all other OKF directories and reserved names.
 
 Reserved names: `index.md` and `log.md` are reserved and MUST NOT be used for concept/entity/source pages (OKF §3.1).
 
@@ -137,22 +146,40 @@ When the user adds a file to `raw/` or asks you to process a source:
 
 1. Read the source completely (document, PDF, image, or web research).
 2. Discuss key takeaways with the user.
-3. Save a copy of the original under `raw/` (immutable — never modify sources; read freely).
-4. Create a **Source Summary** page in `wiki/sources/` with title, source metadata, key claims, and a structured summary. Record `resource` pointing at the `raw/` copy, and provenance fields.
-5. Identify all entities and concepts mentioned. For each:
+3. Save a copy of the original under `raw/` before calling any tabular helper (immutable — never modify sources; read freely). Helpers accept source paths only from the configured wiki's `raw/` directory.
+4. Classify the source:
+   - A genuinely tabular CSV or TSV is persisted automatically without approval.
+   - A genuinely tabular XLSX is persisted automatically without approval, with one table for each tabular worksheet. Ignore worksheets without a header and data rows.
+   - A non-tabular CSV/XLSX and every ordinary document are inspected for explicit visual tables and text that can be represented as columns and rows. Group results into logical datasets; do not automatically persist them.
+5. For an automatic direct-file dataset, call `inspect-file` first and verify tabularity, then persist to `<wiki-root>/database/data.duckdb` with the helper's `persist-json` operation. Create one table per logical dataset, and one per tabular worksheet for XLSX. After success, show the first five rows and the updated Source Summary page.
+   6. For an ordinary-document candidate, propose each logical dataset before writing it. Show the original column labels, inferred schema/types, estimated row count, provenance fields, caveats, and exactly the first five rows, then require explicit user approval. Each approved ordinary-document logical dataset becomes exactly one DuckDB table, just as each tabular worksheet does. Do not call `persist-json` before approval; if rejected, create no derived table and record the rejection/status in the Source Summary or ingest log.
+7. On reingestion, use the helper's `rebuild-json` operation to reconstruct only the tables owned by that `source_id`; never duplicate rows or affect another source's tables. Writes are transactional.
+   8. Exclude formula-derived values and aggregate columns from persisted data, including cached formula results. Retain their input columns and perform calculations at query time. Document the original formula, excluded column, input columns, and any equivalent DuckDB SQL only in the Source Summary page; when safe translation is unavailable, document that no equivalent query was generated. Never store formula definitions or derived values in DuckDB catalog or data tables.
+9. Add `source_id`, `source_page`, `source_section`, and applicable `source_sheet` to every persisted row. Preserve `None`/`NULL` when a provenance field does not apply. Keep ambiguous values as text when possible; use `NULL` only when the value cannot be determined and record the caveat in the Source Summary.
+10. Create or update a **Source Summary** page in `wiki/sources/` with title, source metadata, key claims, structured summary, raw resource, tabular extraction status, table inventory, schema, row count, first five rows, provenance, formula notes, and caveats. Record `resource` pointing at the `raw/` copy and provenance fields.
+11. Identify all entities and concepts mentioned. For each:
    - If a page exists: update it with the new info, noting this source in `sources`.
    - Else: create it in the right subdirectory (`entities/` or `concepts/`).
-6. Link pages with `[[wikilinks]]`.
-7. Update the **per-directory `index.md`** for every directory you added/edited a page in, and the **root `index.md`**.
-8. Append a newest-first entry to `log.md` (root and per-directory as appropriate): `## YYYY-MM-DD | operation` then a one-line description. OKF logs are **newest-first**, so new entries go at the top of their date group.
+12. Link pages with `[[wikilinks]]`, including a link to the Source Summary when answering about persisted data.
+13. Update the **per-directory `index.md`** for every directory you added/edited a page in, and the **root `index.md`**.
+14. Append a newest-first entry to `log.md` (root and per-directory as appropriate): `## YYYY-MM-DD | operation` then a one-line description. OKF logs are **newest-first**, so new entries go at the top of their date group.
 
 ### Query (answering questions)
 
 1. Read the root `index.md` to find relevant pages; then the per-directory indexes.
 2. Read the relevant pages.
-3. Synthesize an answer with `[[wikilink]]` citations.
-4. If the answer produces a durable artifact, offer to save it as a page in `wiki/synthesis/`.
-5. If you save one, update index and log.
+3. If the question requires persisted tabular data, locate the relevant Source Summary and catalog entry first, then use the helper's read-only query operation against `<wiki-root>/database/data.duckdb`. The agent may formulate the internal SQL and use `python scripts/tabular.py query --db <wiki-root>/database/data.duckdb --sql <read-only-query> [--parameter VALUE ...]`; users ask natural-language questions and are never given a SQL CLI or database UI.
+4. Preserve `source_id`, `source_page`, `source_section`, and applicable `source_sheet` context in the answer, and link the Source Summary with `[[wikilinks]]`.
+5. Synthesize an answer with `[[wikilink]]` citations.
+6. If the answer produces a durable artifact, offer to save it as a page in `wiki/synthesis/`.
+7. If you save one, update index and log.
+
+### Tabular failures and safety
+
+- Report missing DuckDB support, unsupported formats, non-tabular input, unreadable sources, malformed CSV/TSV/XLSX input, missing tables, rejected proposals, unsafe/write queries, and transaction failures plainly. Never claim that data was saved when inspection or persistence failed.
+- A failed persistence or rebuild must leave no partial dataset. The helper rolls back the transaction; other source-owned tables remain untouched. The raw source remains immutable.
+- Only the agent may query DuckDB, and only through the helper's read-only query operation. Do not add or expose a user SQL interface.
+- Do not invent values. Preserve source text where possible; otherwise use `NULL` and document the ambiguity in the Source Summary.
 
 ### Lint (health check)
 

@@ -30,6 +30,7 @@ Then ask the agent: **"create a wiki for me"** — it will ask for the root path
 | **First run** | Asks for the wiki root path, saves it, scaffolds `AGENTS.md` + structure |
 | **Adopt existing** | Reuse a consolidated base: create only missing dirs, never overwrite your files; defers to an existing `AGENTS.md` |
 | **Ingest** | Reads sources (docs, web research) → source pages + entity/​concept pages + wikilinks, updates index/log |
+| **Tabular data** | Automatically persists tabular CSV, TSV, and XLSX files; PDF and other document extraction requires approval. Creates one table per logical dataset or worksheet, stores row provenance, excludes formula-derived columns, calculates formulas at query time, and supports agent-only natural-language access. |
 | **Query** | Searches the wiki and answers with `[[wikilink]]` citations |
 | **Lint** | Health-check: orphan pages, stale claims, broken links, data gaps |
 
@@ -45,6 +46,8 @@ Then ask the agent: **"create a wiki for me"** — it will ask for the root path
 ├── index.md             # Root index (OKF §8)
 ├── log.md               # Root log, newest-first (OKF §9)
 ├── raw/                 # Immutable source materials (never edited)
+├── database/
+│   └── data.duckdb      # Derived tabular data, created on demand
 ├── wiki/
 │   ├── index.md · log.md        # per-directory index/log (OKF)
 │   ├── sources/   # one summary page per ingested source
@@ -55,6 +58,17 @@ Then ask the agent: **"create a wiki for me"** — it will ask for the root path
 ```
 
 Every `wiki/*` subdirectory keeps its own `index.md` and `log.md` (newest-first), per OKF §8/§9.
+Source-summary pages for tabular data remain in `wiki/sources/`; `raw/` stays immutable, and no `wiki/tables/` directory is created.
+
+## Tabular data
+
+Install the helper environment with:
+
+```
+python -m pip install -r requirements.txt
+```
+
+The agent stores derived tabular data in `database/data.duckdb`. Ask the agent natural-language questions about imported data; it queries DuckDB read-only and links the relevant source page. There is no user SQL interface. CSV, TSV, and genuinely tabular XLSX files are persisted automatically, while tables or tabulatable text extracted from PDFs and other documents require explicit approval. Formula-derived columns are excluded from storage, with equivalent calculations performed at query time and the original formulas documented on the source page.
 
 ## License
 
