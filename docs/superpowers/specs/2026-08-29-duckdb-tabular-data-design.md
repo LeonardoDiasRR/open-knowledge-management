@@ -37,6 +37,8 @@ The feature adds DuckDB storage for tabular files and tabular data identified in
 - Data access is exclusively through natural-language requests handled by the agent.
 - Each data row includes `source_id`, `source_page`, and `source_section`; Excel rows additionally include `source_sheet`.
 - Ambiguous values remain text when possible and become `NULL` only when they cannot be determined. Every such decision is recorded in the source page.
+- Cells whose values are produced by formulas or aggregations are not persisted in DuckDB. Only their input columns are stored; calculations are performed at query time.
+- Formula definitions and their equivalent DuckDB SQL are documented only in the source page, not in the database or its catalog.
 
 ## Architecture
 
@@ -61,6 +63,7 @@ The database is created on demand. `raw/` remains the immutable source area; `da
 2. Identify whether the source is a supported tabular file or an ordinary document.
 3. For a supported tabular file:
    - verify that the content is tabular;
+   - detect formula-derived columns and exclude their cached results from the persisted schema;
    - create one table per tabular worksheet or logical tabular set;
    - persist automatically;
    - show the first five rows and the created or updated source page.
@@ -104,6 +107,12 @@ Each data table contains the extracted columns plus:
 
 The helper infers types only when safe. Codes and identifiers that could lose leading zeroes remain text. Mixed or uncertain values remain text rather than being silently coerced.
 
+### Formula-derived Values
+
+When the source exposes a formula, the helper stores the input columns but excludes the formula column and its cached result from the data table. This applies to row formulas and aggregate formulas such as `SUM`, `AVERAGE`, and standard deviation calculations. The source page records the original formula, the excluded column, the input columns, and an equivalent DuckDB SQL expression or query for the agent to execute on demand.
+
+Formula metadata is not written to `_openkm_sources`, `_openkm_tables`, or any user data table. If a formula cannot be translated safely, its result is still excluded and the page records that no equivalent query was generated rather than storing the derived value.
+
 ## Reingestion and Transactions
 
 The source checksum and catalog ownership determine whether a source is new or being reingested. On reingestion, the helper removes and rebuilds only that source's derived tables and catalog entries in one transaction. A failed operation rolls back all database changes, leaving other sources untouched.
@@ -128,6 +137,7 @@ Each source page that produces tabular data includes:
 - the first five rows;
 - provenance column definitions;
 - extraction caveats, ambiguous fields, and `NULL` decisions;
+- excluded formula-derived columns, their original formulas, and equivalent DuckDB SQL queries;
 - instructions stating that the data is accessed by asking the agent questions;
 - links to related wiki pages using `[[wikilinks]]`.
 
@@ -151,6 +161,8 @@ Use Python's standard `unittest` framework with temporary wiki roots and DuckDB 
 - Excel workbooks with multiple tabular and non-tabular worksheets;
 - identifier sanitization, accents, symbols, and collisions;
 - type inference, mixed values, `NULL`, and leading-zero identifiers;
+- formula columns excluded from DuckDB while input columns remain queryable;
+- formula definitions documented in the wiki with equivalent SQL and no formula metadata in DuckDB;
 - row-level provenance;
 - source reingestion without duplication;
 - preservation of unrelated sources;
