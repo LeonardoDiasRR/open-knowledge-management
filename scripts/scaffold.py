@@ -159,6 +159,14 @@ sources_verified_by: human:owner   # optional trust signal
    DuckDB SQL expression when safe; when translation is unsafe, record exactly
    `no equivalent query was generated`. Formula definitions and cached formula
    values never go into DuckDB.
+ 5. Formula metadata is never stored in `_openkm_sources`, `_openkm_tables`,
+    or user data tables. This includes formula definitions, original formulas,
+    equivalent DuckDB SQL, and cached formula values; these belong only in the
+    Source Summary.
+ 6. Every Source Summary must record the original formula and equivalent
+    DuckDB SQL expression for each excluded formula-derived column or aggregate
+    cell when translation is safe; when translation is unsafe, record exactly
+    `no equivalent query was generated`.
 
 ### Query
 1. The agent is the only query interface. Do not expose a SQL CLI or database
