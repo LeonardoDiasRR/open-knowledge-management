@@ -100,7 +100,7 @@ Ordem de checagem (primeiro que casar vence):
 | `cpf` | contém `cpf` (e não `cnpj`) | 100% têm exatamente 11 dígitos após limpeza | `VARCHAR` |
 | `cnpj` | contém `cnpj` | 100% têm exatamente 14 dígitos | `VARCHAR` |
 | `cep` | contém `cep` | 100% têm exatamente 8 dígitos | `VARCHAR` |
-| `telefone` | contém `telefone`, `celular`, `fone`, `whatsapp`, `contato` | **nunca** por conteúdo | `VARCHAR` |
+| `telefone` | contém `telefone`, `celular`, `fone`, `whatsapp`, `contato` | **nunca** detecta por conteúdo; conteúdo apenas **veta**: aplica-se só se toda célula preenchida for "cara de telefone" (sem `@` e ≥4 dígitos) | `VARCHAR` |
 
 Regras de colisão:
 
@@ -109,7 +109,7 @@ Regras de colisão:
   hora em coluna timestamp → meia-noite.
 - Nome forte de data com **zero** células parseáveis (ex.: coluna `data`
   cheia de texto livre) → não é data; permanece VARCHAR.
-- `cep` é checado antes de `telefone`; telefone jamais detecta por conteúdo.
+- **cep** é checado antes de `telefone`; telefone jamais **detecta** por conteúdo — mas o conteúdo **veta** (§2.3): uma célula com `@` ou com <4 dígitos mantém a coluna como texto cru. Isso protege colunas `contato`/`contato_eletronico` de e-mails ou nomes de servidor, que seriam NULLificadas pela limpeza de dígitos.
 - Nome `cpf` com conteúdo que não casa 100% com 11 dígitos (ex.: `cpf_cnpj`
   misto) → nenhum kind; VARCHAR cru.
 
