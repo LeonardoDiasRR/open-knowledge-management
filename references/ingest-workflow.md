@@ -87,6 +87,8 @@ automatically. Treat it as an ordinary document and use the candidate workflow
 below. Unsupported formats likewise receive an explicit failure status rather
 than being silently skipped.
 
+- Normalization: `normalizers.py` types date/timestamp/CPF/CNPJ/CEP/phone columns before `CREATE TABLE`; the manifest `normalizations` list reports per-column `normalized`, `nulled`, and up to 3 `nulled_examples` for the Source Summary.
+
 ## Ordinary document candidates
 
 For PDFs, images, text documents, and direct files rejected as non-tabular,
