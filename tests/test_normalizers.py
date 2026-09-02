@@ -187,6 +187,10 @@ class DetectColumnKindTests(unittest.TestCase):
     def test_contato_column_all_phone_like_still_detects(self):
         self.assertEqual(self.detect("contato", ["(11) 3456-7890", "99999-8888"]), "telefone")
 
+    def test_dt_prefix_requires_separator(self):
+        self.assertEqual(self.detect("dt_acordo", ["02/09/1990", "s/ data"]), "date")
+        self.assertIsNone(self.detect("DTR", ["2026-09-02", "relatorio anexo"]))
+
 
 if __name__ == "__main__":
     unittest.main()
