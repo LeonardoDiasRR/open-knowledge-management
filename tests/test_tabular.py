@@ -593,10 +593,6 @@ class TabularTestCase(unittest.TestCase):
         self.assertEqual(str(after[0]["data_nascimento"]), "1990-09-02")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class InspectCliTests(unittest.TestCase):
     def setUp(self):
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -627,3 +623,7 @@ class InspectCliTests(unittest.TestCase):
         self.assertEqual(columns["Data Nascimento"]["kind"], "date")
         self.assertEqual(columns["Data Nascimento"]["type"], "DATE")
         self.assertEqual(payload["datasets"][0]["sample"][0]["CPF"], "04510636509")
+
+
+if __name__ == "__main__":
+    unittest.main()
