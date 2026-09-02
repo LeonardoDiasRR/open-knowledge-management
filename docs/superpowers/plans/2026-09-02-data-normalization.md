@@ -1062,12 +1062,12 @@ by-one month numbering `enumerate(..., 1)`, `date` vs `datetime` in
 `parse_temporal` outputs via `_outcome`, blank-token/offset/`__table__` naming
 mistakes in the Task 4 tests), and the final state is:
 
-- `python3 -m pytest tests/ -q` → **59 passed, 59 subtests passed** (baseline 18/59 + 22 new).
+- `python3 -m pytest tests/ -q` → **63 passed, 59 subtests passed** (baseline 18/59 + tasks + 4 review-fix regression tests: 3 phone-veto + 1 dt_ separator).
 - Real-DB smoke on a copy of `~/llm-wiki/database/data.duckdb`: persisted row reads back `cpf='04510636509'`, `data_nascimento=date(1990,9,2)`, `_openkm_tables` count 10, manifest `normalizations` populated.
 
 ## Definition of Done
 
-- `python3 -m pytest tests/ -q` fully green → expect **59 passed, 59 subtests passed** (the exact number the verified dry-run produced).
+- `python3 -m pytest tests/ -q` fully green → expect **63 passed, 59 subtests passed** (final state after the two review fixes, 19d5927 and 26dba8e).
 - New tables with cpf/cnpj/cep/telefone/dates/timestamps get `VARCHAR`/`DATE`/`TIMESTAMP` and store normalized values (verified by SELECT, not just manifest).
 - `normalizations` present in `TableManifest` with correct `normalized`/`nulled`/`nulled_examples`; raw source files never modified.
 - Non-detected columns (mixed text, identifiers with leading zeros) behave exactly as before.
