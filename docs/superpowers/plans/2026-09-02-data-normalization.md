@@ -22,7 +22,7 @@
 - Create: `scripts/normalizers.py`
 - Test: `tests/test_normalizers.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_normalizers.py`:
 
@@ -111,12 +111,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python3 -m pytest tests/test_normalizers.py -q`
 Expected: collection ERROR `ModuleNotFoundError: No module named 'scripts.normalizers'` (or ImportError on `parse_temporal`).
 
-- [ ] **Step 3: Write the minimal implementation**
+- [x] **Step 3: Write the minimal implementation**
 
 Create `scripts/normalizers.py`. This is the final validated code (prototype fixes included: timezone as `timedelta`, correct group indexing, abbreviated-month branch before numeric branch):
 
@@ -278,12 +278,12 @@ Notes:
 - The yearless written form (`2 de setembro`) does NOT parse — a yearless date in a date column is an unrecoverable cell (NULL + example in the report), never a fake year.
 - `_build` returning `None` on calendar-invalid dates (it catches `ValueError`) is the only rejection path for numerics; pt-BR day-first is the sole order attempted — `31/02/2025` → None. Do NOT add a US fallback; the spec fixes pt-BR.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest tests/test_normalizers.py -q`
 Expected: all PASS (12 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/normalizers.py tests/test_normalizers.py
@@ -298,7 +298,7 @@ git commit -m "feat: add temporal parser for tabular normalization"
 - Modify: `scripts/normalizers.py` (append)
 - Test: `tests/test_normalizers.py` (append)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_normalizers.py` (inside the imports at top, add `normalize_cell` to the `from scripts.normalizers import ...` line):
 
@@ -356,12 +356,12 @@ if __name__ == "__main__":
 
 (Replace the existing trailing `if __name__` block instead of duplicating it.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python3 -m pytest tests/test_normalizers.py -q`
 Expected: ImportError `cannot import name 'normalize_cell'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `scripts/normalizers.py`:
 
@@ -395,12 +395,12 @@ def normalize_cell(value: object, kind: ColumnKind) -> object | None:
     return digits
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest tests/test_normalizers.py -q`
 Expected: all PASS (20 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/normalizers.py tests/test_normalizers.py
@@ -415,7 +415,7 @@ git commit -m "feat: normalize cpf, cnpj, cep, phone, date and timestamp cells"
 - Modify: `scripts/normalizers.py` (append)
 - Test: `tests/test_normalizers.py` (append)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_normalizers.py` (add `detect_column_kind` to the import line):
 
@@ -478,12 +478,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python3 -m pytest tests/test_normalizers.py -q`
 Expected: ImportError `cannot import name 'detect_column_kind'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `scripts/normalizers.py`:
 
@@ -539,12 +539,12 @@ def detect_column_kind(header: str, values: Sequence[object]) -> ColumnKind | No
 
 Note on `created_at`/`updated_at` after `[^a-z0-9]` stripping: they become `createdat`/`updatedat` — that is why `_TIMESTAMP_NAME` holds the stripped forms. Same for `dt_` prefix → `dt`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest tests/test_normalizers.py -q`
 Expected: all PASS (~33 tests total in file).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/normalizers.py tests/test_normalizers.py
@@ -559,7 +559,7 @@ git commit -m "feat: detect date, timestamp and BR document column kinds"
 - Modify: `scripts/tabular.py` (`_infer_type` ~line 611, `_typed_value` ~line 630, `TableManifest` ~line 42, `_persist` ~lines 751-820, `_inspect_payload` ~line 967)
 - Test: `tests/test_tabular.py` (append)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_tabular.py` inside class `TabularTestCase` (keep existing methods untouched; add a helper):
 
@@ -671,12 +671,12 @@ Append to `tests/test_tabular.py` inside class `TabularTestCase` (keep existing 
         self.assertEqual(str(after[0]["data_nascimento"]), "1990-09-02")
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python3 -m pytest tests/test_tabular.py -q`
 Expected: FAIL — `TableManifest` has no field `normalizations` (TypeError) and CPF column inferred BIGINT in `test_normalization_types_and_stores_br_documents_and_dates`.
 
-- [ ] **Step 3: Wire the module into tabular.py**
+- [x] **Step 3: Wire the module into tabular.py**
 
 3a. Add the import near the top of `scripts/tabular.py` (after `import duckdb`).
 The dual import is REQUIRED: the CLI runs as `python scripts/tabular.py`
@@ -909,12 +909,12 @@ and `sample` construction (keep `source_page`, `source_section`,
 
 This exact block was verified in the dry-run; do not rename `kind`/`columns`/`sample` keys.
 
-- [ ] **Step 4: Run the full suite**
+- [x] **Step 4: Run the full suite**
 
 Run: `python3 -m pytest tests/ -q`
 Expected: all PASS (existing 18 tests + new). If `test_persistence_infers_types_preserves_mixed_values_nulls_and_identifiers` breaks, check column names used there against `_DATE_NAME`/`_PHONE_NAME` tokens — it must keep passing **unchanged** (spec: no behavior change for non-detected columns); if a fixture name accidentally collides (e.g. a column literally named `data` holding numbers), rename the *fixture column* in that test to keep intent, never relax production logic.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/tabular.py tests/test_tabular.py
@@ -929,7 +929,7 @@ git commit -m "feat: apply normalization and typing in DuckDB persistence path"
 - Modify: `scripts/tabular.py` (nothing if Task 4 Step 3g done — this task only verifies the CLI payload and adds a test)
 - Test: `tests/test_tabular.py` (append)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_tabular.py` (module level, after class; needs `import io, contextlib, json` at top if absent):
 
@@ -966,21 +966,21 @@ class InspectCliTests(unittest.TestCase):
         self.assertEqual(payload["datasets"][0]["sample"][0]["CPF"], "04510636509")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python3 -m pytest tests/test_tabular.py::InspectCliTests -q`
 Expected: FAIL (`kind` key missing or sample raw) — if Task 4 already produced green, mark this step as verification-only and skip to Step 4.
 
-- [ ] **Step 3: Implement any remaining `_inspect_payload` normalization**
+- [x] **Step 3: Implement any remaining `_inspect_payload` normalization**
 
 Only if Step 2 failed: finish the 3g change from Task 4 (sample normalization + `kind` key).
 
-- [ ] **Step 4: Run the full suite**
+- [x] **Step 4: Run the full suite**
 
 Run: `python3 -m pytest tests/ -q`
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_tabular.py
@@ -996,7 +996,7 @@ git commit -m "test: cover inspect-file normalization reporting"
 - Modify: `references/ingest-workflow.md` (persist step)
 - No code changes.
 
-- [ ] **Step 1: Add the SKILL.md bullet**
+- [x] **Step 1: Add the SKILL.md bullet**
 
 In `SKILL.md`, numbered item 5 of the ingest section is the line starting
 `5. For an automatic direct-file dataset, call \`inspect-file\` first` (ends with
@@ -1009,7 +1009,7 @@ immediately after that item, keeping its 3-space indent so it nests under item 5
 
 Do not touch any other line — `tests/test_skill_contract.py` asserts exact substrings elsewhere.
 
-- [ ] **Step 2: Add the reference bullet**
+- [x] **Step 2: Add the reference bullet**
 
 In `references/ingest-workflow.md`, in the persistence section, append one bullet:
 
@@ -1017,12 +1017,12 @@ In `references/ingest-workflow.md`, in the persistence section, append one bulle
 - Normalization: `normalizers.py` types date/timestamp/CPF/CNPJ/CEP/phone columns before `CREATE TABLE`; the manifest `normalizations` list reports per-column `normalized`, `nulled`, and up to 3 `nulled_examples` for the Source Summary.
 ```
 
-- [ ] **Step 3: Run the full suite**
+- [x] **Step 3: Run the full suite**
 
 Run: `python3 -m pytest tests/ -q`
 Expected: all PASS (contract tests included).
 
-- [ ] **Step 4: Smoke against a copy of the real wiki DB (never the live file)**
+- [x] **Step 4: Smoke against a copy of the real wiki DB (never the live file)**
 
 ```bash
 cp ~/llm-wiki/database/data.duckdb /tmp/okm_smoke.duckdb
@@ -1044,7 +1044,7 @@ rm /tmp/okm_smoke.duckdb
 
 Expected output: `[{'cpf': '04510636509', 'data_nascimento': datetime.date(1990, 9, 2)}]` and the table count (10: 9 existing + smoke). The live `~/llm-wiki/database/data.duckdb` is only read by `cp`, never written.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add SKILL.md references/ingest-workflow.md
