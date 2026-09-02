@@ -504,6 +504,8 @@ def detect_column_kind(header: str, values: Sequence[object]) -> ColumnKind | No
     telefone. Blanks never count against the 100% content threshold.
     """
     name = _normalized_header(header)
+    # §4: prefixo forte é "dt_" com separador; "DTR"/"DTG" não são datas
+    spaced = re.sub(r"[^a-z0-9]+", "_", header.lower().strip("_"))
     filled = [value for value in values if not is_blank(value)]
     if not filled:
         return None
@@ -515,7 +517,7 @@ def detect_column_kind(header: str, values: Sequence[object]) -> ColumnKind | No
 
     if all_temporal and (has_time or any(token in name for token in _TIMESTAMP_NAME)):
         return "timestamp"
-    if any(token in name for token in _DATE_NAME) or name.startswith("dt"):
+    if any(token in name for token in _DATE_NAME) or spaced.startswith("dt_"):
         if any(parseable) and not has_time:
             return "date"
     if all_temporal:
