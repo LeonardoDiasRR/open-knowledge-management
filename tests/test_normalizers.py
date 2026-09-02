@@ -2,7 +2,7 @@
 import unittest
 from datetime import date, datetime, timedelta, timezone
 
-from scripts.normalizers import normalize_cell, parse_temporal
+from scripts.normalizers import detect_column_kind, normalize_cell, parse_temporal
 
 
 class ParseTemporalTests(unittest.TestCase):
@@ -123,6 +123,60 @@ class NormalizeCellTests(unittest.TestCase):
     def test_unknown_kind_raises(self):
         with self.assertRaises(ValueError):
             normalize_cell("x", "placa")
+
+
+class DetectColumnKindTests(unittest.TestCase):
+    def detect(self, header, values):
+        return detect_column_kind(header, values)
+
+    def test_document_by_name_and_content_convergence(self):
+        self.assertEqual(self.detect("cpf", ["123.456.789-09", "04510636509"]), "cpf")
+        self.assertEqual(self.detect("CNPJ", ["12.345.678/0001-95"]), "cnpj")
+        self.assertEqual(self.detect("CEP", ["01310-100", "70000000"]), "cep")
+
+    def test_cpf_name_requires_eleven_digits_content(self):
+        self.assertIsNone(self.detect("cpf", ["abc", "12"]))
+
+    def test_mixed_cpf_cnpj_column_is_not_detected(self):
+        self.assertIsNone(self.detect("cpf_cnpj", ["12345678901", "12345678000195"]))
+
+    def test_phone_never_detected_by_content(self):
+        self.assertEqual(self.detect("telefone", ["(11) 3456-7890"]), "telefone")
+        self.assertIsNone(self.detect("codigo", ["12345678"]))
+
+    def test_strong_date_name_applies_even_with_unrecoverable(self):
+        self.assertEqual(self.detect("data_nascimento", ["02/09/1990", "s/ data"]), "date")
+
+    def test_strong_date_name_with_zero_parseable_stays_text(self):
+        self.assertIsNone(self.detect("Data", ["texto livre", "outra coisa"]))
+
+    def test_free_text_column_with_some_dates_is_not_date(self):
+        self.assertIsNone(self.detect("observacao", ["02/09/2026", "nada demais", "ver nota", "x"]))
+
+    def test_content_pure_requires_full_parseability(self):
+        self.assertEqual(self.detect("coliga", ["2026-09-02", "2026-09-03"]), "date")
+        self.assertIsNone(self.detect("coliga", ["2026-09-02", "relatório"]))
+
+    def test_explicit_time_wins_over_date_name(self):
+        self.assertEqual(self.detect("data_registro", ["02/09/2026 14:30", "03/09/2026"]), "timestamp")
+        self.assertEqual(self.detect("registro", ["02/09/2026 14:30", "03/09/2026 09:00"]), "timestamp")
+
+    def test_timestamp_names(self):
+        self.assertEqual(self.detect("timestamp", ["2026-09-02 10:00"]), "timestamp")
+        self.assertEqual(self.detect("created_at", ["2026-09-02"]), "timestamp")
+        self.assertEqual(self.detect("hora_saida", ["02/09/2026 08:00"]), "timestamp")
+
+    def test_cep_checked_before_phone(self):
+        # nome 'cep' e conteudo 8 digitos -> cep (nao telefone)
+        self.assertEqual(self.detect("cep", ["01310100"]), "cep")
+
+    def test_all_blank_column_is_none(self):
+        self.assertIsNone(self.detect("data", ["", "-", None]))
+
+    def test_normalization_is_idempotent_for_detected_document(self):
+        once = [normalize_cell(v, "cpf") for v in ["123.456.789-09", "045.106.365-09"]]
+        self.assertEqual(self.detect("cpf", once), "cpf")
+        self.assertEqual([normalize_cell(v, "cpf") for v in once], once)
 
 
 if __name__ == "__main__":

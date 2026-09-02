@@ -178,3 +178,46 @@ def normalize_cell(value: object, kind: ColumnKind) -> object | None:
     if len(digits) in (10, 11):
         return f"55{digits}"
     return digits
+
+
+_DATE_NAME = ("data", "nasc", "venc", "exped")
+_TIMESTAMP_NAME = ("timestamp", "hora", "horario", "createdat", "updatedat")
+_PHONE_NAME = ("telefone", "celular", "fone", "whatsapp", "contato")
+
+
+def _normalized_header(header: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", header.lower())
+
+
+def detect_column_kind(header: str, values: Sequence[object]) -> ColumnKind | None:
+    """Decide the kind of one column from header + content. None = keep as-is.
+
+    Validation order (first match wins): timestamp, date, cpf, cnpj, cep,
+    telefone. Blanks never count against the 100% content threshold.
+    """
+    name = _normalized_header(header)
+    filled = [value for value in values if not is_blank(value)]
+    if not filled:
+        return None
+    texts = [str(value) for value in filled]
+    parsed = [parse_temporal(text) for text in texts]
+    parseable = [item is not None for item in parsed]
+    all_temporal = all(parseable)
+    has_time = any(item[1] for item, ok in zip(parsed, parseable) if ok and item)
+
+    if all_temporal and (has_time or any(token in name for token in _TIMESTAMP_NAME)):
+        return "timestamp"
+    if any(token in name for token in _DATE_NAME) or name.startswith("dt"):
+        if any(parseable) and not has_time:
+            return "date"
+    if all_temporal:
+        return "date"
+    if "cpf" in name and "cnpj" not in name and all(normalize_cell(t, "cpf") for t in texts):
+        return "cpf"
+    if "cnpj" in name and all(normalize_cell(t, "cnpj") for t in texts):
+        return "cnpj"
+    if "cep" in name and all(normalize_cell(t, "cep") for t in texts):
+        return "cep"
+    if any(token in name for token in _PHONE_NAME):
+        return "telefone"
+    return None
