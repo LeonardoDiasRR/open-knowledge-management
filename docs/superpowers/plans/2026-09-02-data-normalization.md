@@ -29,7 +29,7 @@ Create `tests/test_normalizers.py`:
 ```python
 """Tests for the pure normalizer module (no DuckDB, no filesystem)."""
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 from scripts.normalizers import parse_temporal
 
@@ -87,6 +87,14 @@ class ParseTemporalTests(unittest.TestCase):
     def test_timezone_offsets_are_converted_to_utc_naive(self):
         self.assert_temporal("2026-09-02T14:30:00-04:00", datetime(2026, 9, 2, 18, 30), True)
         self.assert_temporal("2026-09-02T14:30:00Z", datetime(2026, 9, 2, 14, 30), True)
+
+    def test_invalid_utc_offset_is_unrecoverable(self):
+        self.assertIsNone(parse_temporal("2026-09-02T14:30:00+24:00"))
+        self.assertIsNone(parse_temporal("2026-09-02T14:30:00-99:00"))
+
+    def test_aware_datetime_is_converted_to_utc_naive(self):
+        aware = datetime(2026, 9, 2, 14, 30, tzinfo=timezone(timedelta(hours=-4)))
+        self.assert_temporal(aware, datetime(2026, 9, 2, 18, 30), True)
 
     def test_python_objects_pass_through(self):
         self.assert_temporal(date(2026, 9, 2), date(2026, 9, 2), False)
@@ -156,7 +164,6 @@ _ISO = re.compile(rf"^(\d{{4}})-(\d{{1,2}})-(\d{{1,2}}){_TIME_SUFFIX}$")
 _NUMERIC = re.compile(rf"^(\d{{1,4}})[/.\-](\d{{1,2}})[/.\-](\d{{2,4}}){_TIME_SUFFIX}$")
 _MONTH_NAME = re.compile(rf"^(\d{{1,2}})[/.-]([a-zç]{{3,9}})[/.-](\d{{2,4}}){_TIME_SUFFIX}$", re.IGNORECASE)
 _WRITTEN = re.compile(r"^(\d{1,2})\s+de\s+([a-zç]+)\.?(?:\s+de\s+)?(\d{4})$", re.IGNORECASE)
-_WRITTEN_TIME = re.compile(r"\s+(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?\s*(Z|[+-]\d{2}:?\d{2})?$")
 
 
 def is_blank(value: object) -> bool:
@@ -175,7 +182,10 @@ def _timezone(offset: str | None):
         return timezone.utc
     sign = 1 if offset[0] == "+" else -1
     digits = offset[1:].replace(":", "")
-    return timezone(sign * timedelta(seconds=int(digits[:2]) * 3600 + int(digits[2:]) * 60))
+    try:
+        return timezone(sign * timedelta(seconds=int(digits[:2]) * 3600 + int(digits[2:]) * 60))
+    except ValueError:
+        return None  # e.g. +24:00 — cell is unrecoverable, caller must NULL it
 
 
 def _build(day: int, month: int, year: object, hour, minute, second, fraction, offset):
@@ -195,6 +205,8 @@ def _build(day: int, month: int, year: object, hour, minute, second, fraction, o
     except ValueError:
         return None
     zone = _timezone(offset)
+    if offset and zone is None:
+        return None
     if zone is not None:
         moment = moment.replace(tzinfo=zone).astimezone(timezone.utc).replace(tzinfo=None)
     return moment
@@ -213,6 +225,8 @@ def parse_temporal(value: object) -> tuple[date | datetime, bool] | None:
     datetime input) returns a naive `datetime` (tz offsets converted to UTC).
     """
     if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc)
         return value.replace(tzinfo=None), True
     if isinstance(value, date):
         return value, False
@@ -244,11 +258,7 @@ def parse_temporal(value: object) -> tuple[date | datetime, bool] | None:
         month = _month_name(match.group(2))
         if month is None:
             return None
-        year = int(match.group(3))
-        tail = _WRITTEN_TIME.search(text)
-        if tail:
-            return _outcome(_build(int(match.group(1)), month, year, *tail.groups()), True)
-        return _outcome(_build(int(match.group(1)), month, year, None, None, None, None, None), False)
+        return _outcome(_build(int(match.group(1)), month, int(match.group(3)), None, None, None, None, None), False)
 
     match = _NUMERIC.match(text)
     if match:
