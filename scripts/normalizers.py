@@ -219,5 +219,9 @@ def detect_column_kind(header: str, values: Sequence[object]) -> ColumnKind | No
     if "cep" in name and all(normalize_cell(t, "cep") for t in texts):
         return "cep"
     if any(token in name for token in _PHONE_NAME):
-        return "telefone"
+        # veto de conteúdo (§2.3): coluna mista ou de e-mails/nomes permanece texto
+        def phone_like(text: str) -> bool:
+            return "@" not in text and sum(character.isdigit() for character in text) >= 4
+        if all(phone_like(text) for text in texts):
+            return "telefone"
     return None

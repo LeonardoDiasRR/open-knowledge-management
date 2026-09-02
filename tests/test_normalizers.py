@@ -178,6 +178,15 @@ class DetectColumnKindTests(unittest.TestCase):
         self.assertEqual(self.detect("cpf", once), "cpf")
         self.assertEqual([normalize_cell(v, "cpf") for v in once], once)
 
+    def test_contato_column_with_emails_stays_text(self):
+        self.assertIsNone(self.detect("contato_eletronico", ["pf@dpf.gov.br", "x@y.gov.br"]))
+
+    def test_mixed_phone_and_email_column_stays_text(self):
+        self.assertIsNone(self.detect("contato", ["(11) 3456-7890", "joao@gmail.com"]))
+
+    def test_contato_column_all_phone_like_still_detects(self):
+        self.assertEqual(self.detect("contato", ["(11) 3456-7890", "99999-8888"]), "telefone")
+
 
 if __name__ == "__main__":
     unittest.main()
