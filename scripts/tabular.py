@@ -19,6 +19,23 @@ from typing import Sequence
 
 import duckdb
 
+try:  # package import (tests) / script import (CLI) both work
+    from scripts.normalizers import (
+        KIND_SQL_TYPE,
+        ColumnKind,
+        detect_column_kind,
+        is_blank,
+        normalize_cell,
+    )
+except ImportError:  # pragma: no cover - CLI execution path
+    from normalizers import (
+        KIND_SQL_TYPE,
+        ColumnKind,
+        detect_column_kind,
+        is_blank,
+        normalize_cell,
+    )
+
 
 @dataclass(frozen=True)
 class FormulaDefinition:
@@ -46,6 +63,7 @@ class TableManifest:
     row_count: int
     columns: list[tuple[str, str]]
     sample: list[dict[str, object]]
+    normalizations: list[dict[str, object]] = field(default_factory=list)
 
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -608,7 +626,11 @@ def _iso_date(value: object) -> date | None:
     return None
 
 
-def _infer_type(values: Sequence[object]) -> str:
+def _infer_type(values: Sequence[object], column_name: str | None = None) -> str:
+    if column_name is not None:
+        kind = detect_column_kind(column_name, values)
+        if kind is not None:
+            return KIND_SQL_TYPE[kind]
     nonnull = [value for value in values if value is not None]
     if not nonnull:
         return "VARCHAR"
@@ -627,16 +649,48 @@ def _infer_type(values: Sequence[object]) -> str:
     return "VARCHAR"
 
 
-def _typed_value(value: object, type_name: str) -> object:
+def _typed_value(value: object, type_name: str, kind: ColumnKind | None = None) -> object:
     if value is None:
         return None
+    if kind is not None:
+        value = normalize_cell(value, kind)
+        if value is None:
+            return None
     if type_name == "DATE":
         return _iso_date(value)
+    if type_name == "TIMESTAMP":
+        return value
     if type_name == "BIGINT" and isinstance(value, str):
         return int(value)
     if type_name == "DOUBLE" and isinstance(value, str):
         return float(value)
     return value
+
+
+def _normalization_report(
+    column: str, kind: ColumnKind, values: Sequence[object]
+) -> dict[str, object]:
+    normalized = 0
+    nulled = 0
+    examples: list[str] = []
+    for value in values:
+        if is_blank(value):
+            continue
+        if normalize_cell(value, kind) is not None:
+            normalized += 1
+        else:
+            nulled += 1
+            text = str(value).strip()[:40]
+            if text not in examples:
+                examples.append(text)
+    return {
+        "column": column,
+        "kind": kind,
+        "type": KIND_SQL_TYPE[kind],
+        "normalized": normalized,
+        "nulled": nulled,
+        "nulled_examples": examples[:3],
+    }
 
 
 def _require_file(path: Path) -> None:
@@ -755,9 +809,14 @@ def _persist(
             physical_columns = _unique_identifiers(
                 stored_columns, reserved={name for name, _type in _PROVENANCE}
             )
-            column_types = [
-                _infer_type([row.get(column) for row in dataset.rows])
+            kinds: list[ColumnKind | None] = [
+                detect_column_kind(column, [row.get(column) for row in dataset.rows])
                 for column in stored_columns
+            ]
+            column_types = [
+                KIND_SQL_TYPE[kind] if kind is not None
+                else _infer_type([row.get(column) for row in dataset.rows])
+                for column, kind in zip(stored_columns, kinds)
             ]
             schema = list(zip(physical_columns, column_types)) + list(_PROVENANCE)
             definitions = ", ".join(
@@ -772,8 +831,10 @@ def _persist(
             for row in dataset.rows:
                 values.append(
                     [
-                        _typed_value(row.get(original), type_name)
-                        for original, type_name in zip(stored_columns, column_types)
+                        _typed_value(row.get(original), type_name, kind)
+                        for original, type_name, kind in zip(
+                            stored_columns, column_types, kinds
+                        )
                     ]
                     + [
                         source_id,
@@ -797,6 +858,11 @@ def _persist(
                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
                 [table_name, source_id, dataset.name, schema_json, len(dataset.rows)],
             )
+            normalizations = [
+                _normalization_report(column, kind, [row.get(column) for row in dataset.rows])
+                for column, kind in zip(stored_columns, kinds)
+                if kind is not None
+            ]
             manifests.append(
                 TableManifest(
                     table_name=table_name,
@@ -805,9 +871,9 @@ def _persist(
                     columns=schema,
                     sample=[
                         {
-                            name: _typed_value(row.get(original), type_name)
-                            for original, name, type_name in zip(
-                                stored_columns, physical_columns, column_types
+                            name: _typed_value(row.get(original), type_name, kind)
+                            for original, name, type_name, kind in zip(
+                                stored_columns, physical_columns, column_types, kinds
                             )
                         }
                         | {
@@ -818,6 +884,7 @@ def _persist(
                         }
                         for row in dataset.rows[:5]
                     ],
+                    normalizations=normalizations,
                 )
             )
 
@@ -967,15 +1034,33 @@ def _datasets_from_json(payload: dict[str, object]) -> list[Dataset]:
 def _inspect_payload(source_id: str, datasets: Sequence[Dataset]) -> dict[str, object]:
     result = []
     for dataset in datasets:
+        kinds_by_column = {
+            column: detect_column_kind(column, [row.get(column) for row in dataset.rows])
+            for column in dataset.columns
+        }
+        sample_rows = []
+        for row in dataset.rows[:5]:
+            sample_row = {}
+            for column in dataset.columns:
+                value = row.get(column)
+                kind = kinds_by_column[column]
+                sample_row[column] = normalize_cell(value, kind) if kind is not None else value
+            sample_rows.append(sample_row)
         result.append(
             {
                 "name": dataset.name,
                 "columns": [
-                    {"name": column, "type": _infer_type([row.get(column) for row in dataset.rows])}
+                    {
+                        "name": column,
+                        "type": KIND_SQL_TYPE[kinds_by_column[column]]
+                        if kinds_by_column[column] is not None
+                        else _infer_type([row.get(column) for row in dataset.rows]),
+                        "kind": kinds_by_column[column],
+                    }
                     for column in dataset.columns
                 ],
                 "row_count": len(dataset.rows),
-                "sample": dataset.rows[:5],
+                "sample": sample_rows,
                 "source_page": dataset.source_page,
                 "source_section": dataset.source_section,
                 "source_sheet": dataset.source_sheet,

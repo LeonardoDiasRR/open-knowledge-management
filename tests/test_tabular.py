@@ -1,3 +1,6 @@
+import contextlib
+import io
+import json
 import os
 import re
 import tempfile
@@ -483,6 +486,144 @@ class TabularTestCase(unittest.TestCase):
             with self.subTest(sql=sql), self.assertRaises(ValueError):
                 query_read_only(self.db, sql)
 
+    def _persist_single(self, source_name, dataset_name, columns, rows):
+        source = self._source(source_name)
+        return persist_source(
+            self.db,
+            Path(source_name).stem,
+            source,
+            f"wiki/sources/{Path(source_name).stem}.md",
+            [Dataset(name=dataset_name, columns=columns, rows=rows)],
+        )
+
+    def test_normalization_types_and_stores_br_documents_and_dates(self):
+        manifests = self._persist_single(
+            "pessoas.csv",
+            "pessoas",
+            ["Nome", "CPF", "Data Nascimento", "Telefone"],
+            [
+                {"Nome": "Ana", "CPF": "045.106.365-09", "Data Nascimento": "02/09/1990", "Telefone": "(11) 3456-7890"},
+                {"Nome": "Beto", "CPF": "12345678901", "Data Nascimento": "31/02/1990", "Telefone": "11 99999-8888"},
+            ],
+        )
+        columns = dict(manifests[0].columns)
+        self.assertEqual(columns["cpf"], "VARCHAR")
+        self.assertEqual(columns["data_nascimento"], "DATE")
+        self.assertEqual(columns["telefone"], "VARCHAR")
+
+        stored = query_read_only(
+            self.db,
+            'SELECT cpf, data_nascimento, telefone FROM "pessoas__pessoas" ORDER BY cpf',
+        )
+        self.assertEqual(stored[0]["cpf"], "04510636509")          # leading zero kept, stored VARCHAR
+        self.assertEqual(str(stored[0]["data_nascimento"]), "1990-09-02")
+        self.assertIsNone(stored[1]["data_nascimento"])             # calendar-invalid -> NULL
+        self.assertEqual(stored[0]["telefone"], "551134567890")
+
+        report = {item["column"]: item for item in manifests[0].normalizations}
+        self.assertEqual(report["Data Nascimento"]["kind"], "date")
+        self.assertEqual(report["Data Nascimento"]["normalized"], 1)
+        self.assertEqual(report["Data Nascimento"]["nulled"], 1)    # "31/02/1990" is not a blank token
+        self.assertEqual(report["Data Nascimento"]["nulled_examples"], ["31/02/1990"])
+        self.assertEqual(report["CPF"]["kind"], "cpf")
+        self.assertNotIn("Nome", report)                            # plain text: not normalized
+
+    def test_timestamp_column_is_typed_and_queryable(self):
+        manifests = self._persist_single(
+            "eventos.csv",
+            "eventos",
+            ["Ocorrencia", "data_registro"],
+            [
+                {"Ocorrencia": "a", "data_registro": "02/09/2026 14:30"},
+                {"Ocorrencia": "b", "data_registro": "2026-09-02T14:30:00-04:00"},
+            ],
+        )
+        self.assertEqual(dict(manifests[0].columns)["data_registro"], "TIMESTAMP")
+        stored = query_read_only(
+            self.db,
+            "SELECT count(*) AS n FROM eventos__eventos WHERE data_registro >= TIMESTAMP '2026-09-02 18:00:00'",
+        )
+        self.assertEqual(stored[0]["n"], 1)  # 14:30-04:00 = 18:30 UTC; plain 14:30 stays 14:30
+        stored = query_read_only(
+            self.db,
+            "SELECT count(*) AS n FROM eventos__eventos WHERE data_registro >= TIMESTAMP '2026-09-02 14:00:00'",
+        )
+        self.assertEqual(stored[0]["n"], 2)
+
+    def test_cpf_digits_only_column_stays_varchar_not_bigint(self):
+        # regression: all-digit CPFs used to be inferred BIGINT and lost leading zeros
+        manifests = self._persist_single(
+            "so_digitos.csv", "t", ["cpf"], [{"cpf": "04510636509"}]
+        )
+        self.assertEqual(dict(manifests[0].columns)["cpf"], "VARCHAR")
+        stored = query_read_only(self.db, 'SELECT cpf FROM "so_digitos__t"')
+        self.assertEqual(stored[0]["cpf"], "04510636509")
+
+    def test_free_text_and_mixed_columns_keep_current_behavior(self):
+        manifests = self._persist_single(
+            "notas.csv",
+            "notas",
+            ["observacao", "codigo"],
+            [
+                {"observacao": "02/09/2026", "codigo": "0012"},
+                {"observacao": "nada demais", "codigo": "0034"},
+            ],
+        )
+        columns = dict(manifests[0].columns)
+        self.assertEqual(columns["observacao"], "VARCHAR")
+        self.assertEqual(columns["codigo"], "VARCHAR")  # leading zeros: existing identifier rule
+        self.assertEqual(manifests[0].normalizations, [])
+
+    def test_rebuild_of_normalized_dataset_is_idempotent(self):
+        columns = ["cpf", "data_nascimento"]
+        rows = [{"cpf": "045.106.365-09", "data_nascimento": "02/09/1990"}]
+        first = self._persist_single("idem.csv", "idem", columns, rows)
+        normalized = query_read_only(self.db, 'SELECT cpf, data_nascimento FROM "idem__idem"')
+        again_rows = [
+            {"cpf": normalized[0]["cpf"], "data_nascimento": str(normalized[0]["data_nascimento"])}
+        ]
+        source = self.raw / "idem.csv"
+        second = rebuild_source(
+            self.db, "idem", source, "wiki/sources/idem.md",
+            [Dataset(name="idem", columns=columns, rows=again_rows)],
+        )
+        self.assertEqual(dict(first[0].columns), dict(second[0].columns))
+        after = query_read_only(self.db, 'SELECT cpf, data_nascimento FROM "idem__idem"')
+        self.assertEqual(str(after[0]["cpf"]), "04510636509")
+        self.assertEqual(str(after[0]["data_nascimento"]), "1990-09-02")
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InspectCliTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary_directory.name)
+        (self.root / "raw").mkdir()
+        self.previous_root = os.environ.get("OKM_WIKI_ROOT")
+        os.environ["OKM_WIKI_ROOT"] = str(self.root)
+
+    def tearDown(self):
+        if self.previous_root is None:
+            os.environ.pop("OKM_WIKI_ROOT", None)
+        else:
+            os.environ["OKM_WIKI_ROOT"] = self.previous_root
+        self.temporary_directory.cleanup()
+
+    def test_inspect_file_reports_kind_and_normalized_sample(self):
+        path = self.root / "raw" / "cli.csv"
+        path.write_text("Nome,CPF,Data Nascimento\nAna,045.106.365-09,02/09/1990\n", encoding="utf-8")
+        from scripts.tabular import main
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            main(["inspect-file", "--source-id", "cli", "--file", str(path)])
+        payload = json.loads(buffer.getvalue())
+        columns = {item["name"]: item for item in payload["datasets"][0]["columns"]}
+        self.assertEqual(columns["CPF"]["kind"], "cpf")
+        self.assertEqual(columns["CPF"]["type"], "VARCHAR")
+        self.assertEqual(columns["Data Nascimento"]["kind"], "date")
+        self.assertEqual(columns["Data Nascimento"]["type"], "DATE")
+        self.assertEqual(payload["datasets"][0]["sample"][0]["CPF"], "04510636509")
