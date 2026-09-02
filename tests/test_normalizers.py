@@ -2,7 +2,7 @@
 import unittest
 from datetime import date, datetime, timedelta, timezone
 
-from scripts.normalizers import parse_temporal
+from scripts.normalizers import normalize_cell, parse_temporal
 
 
 class ParseTemporalTests(unittest.TestCase):
@@ -76,6 +76,53 @@ class ParseTemporalTests(unittest.TestCase):
     def test_aware_datetime_is_converted_to_utc_naive(self):
         aware = datetime(2026, 9, 2, 14, 30, tzinfo=timezone(timedelta(hours=-4)))
         self.assert_temporal(aware, datetime(2026, 9, 2, 18, 30), True)
+
+
+class NormalizeCellTests(unittest.TestCase):
+    def test_cpf_strips_mask_keeps_leading_zero(self):
+        self.assertEqual(normalize_cell("123.456.789-09", "cpf"), "12345678909")
+        self.assertEqual(normalize_cell("045.106.365-09", "cpf"), "04510636509")
+        self.assertEqual(normalize_cell("111.111.111-11", "cpf"), "11111111111")  # no DV check
+        self.assertIsNone(normalize_cell("123.456.789-0", "cpf"))
+
+    def test_cnpj_strips_mask(self):
+        self.assertEqual(normalize_cell("12.345.678/0001-95", "cnpj"), "12345678000195")
+        self.assertIsNone(normalize_cell("12.345.678/0001-9", "cnpj"))
+
+    def test_cep(self):
+        self.assertEqual(normalize_cell("01310-100", "cep"), "01310100")
+        self.assertIsNone(normalize_cell("01310-10", "cep"))
+
+    def test_phone_completes_ddi_only_for_10_or_11_digits(self):
+        self.assertEqual(normalize_cell("(11) 3456-7890", "telefone"), "551134567890")
+        self.assertEqual(normalize_cell("11 99999-8888", "telefone"), "5511999998888")
+        self.assertEqual(normalize_cell("+55 (11) 98765-4321", "telefone"), "5511987654321")
+        self.assertEqual(normalize_cell("551134567890", "telefone"), "551134567890")  # idempotent
+        self.assertEqual(normalize_cell("9999-9999", "telefone"), "99999999")  # 8 digits: keep as-is
+
+    def test_document_blanks_and_none(self):
+        for kind in ("cpf", "cnpj", "cep", "telefone"):
+            self.assertIsNone(normalize_cell(None, kind))
+            self.assertIsNone(normalize_cell("", kind))
+            self.assertIsNone(normalize_cell("s/ data", kind))
+
+    def test_date_kind_returns_date_objects(self):
+        self.assertEqual(normalize_cell("02/09/1990", "date"), date(1990, 9, 2))
+        self.assertEqual(normalize_cell(datetime(1990, 9, 2, 14, 30), "date"), date(1990, 9, 2))
+        self.assertEqual(normalize_cell("2026-09-02", "date"), date(2026, 9, 2))  # idempotent
+        self.assertIsNone(normalize_cell("s/ data", "date"))
+
+    def test_timestamp_kind_returns_datetime(self):
+        self.assertEqual(normalize_cell("02/09/2026 14:30", "timestamp"), datetime(2026, 9, 2, 14, 30))
+        self.assertEqual(normalize_cell("02/09/2026", "timestamp"), datetime(2026, 9, 2, 0, 0))
+        self.assertEqual(
+            normalize_cell("2026-09-02T14:30:00-04:00", "timestamp"),
+            datetime(2026, 9, 2, 18, 30),
+        )
+
+    def test_unknown_kind_raises(self):
+        with self.assertRaises(ValueError):
+            normalize_cell("x", "placa")
 
 
 if __name__ == "__main__":

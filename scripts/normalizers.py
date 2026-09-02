@@ -149,3 +149,32 @@ def parse_temporal(value: object) -> tuple[date | datetime, bool] | None:
         return _outcome(moment, bool(match.group(4)))
 
     return None
+
+
+def normalize_cell(value: object, kind: ColumnKind) -> object | None:
+    """Normalize one cell for the given kind. None = unrecoverable (stored NULL)."""
+    if kind not in KIND_SQL_TYPE:
+        raise ValueError(f"unknown normalization kind: {kind!r}")
+    if value is None:
+        return None
+    if kind in ("date", "timestamp"):
+        parsed = parse_temporal(value)
+        if parsed is None:
+            return None
+        moment, _has_time = parsed
+        if kind == "date":
+            return moment.date() if isinstance(moment, datetime) else moment
+        return moment if isinstance(moment, datetime) else datetime(moment.year, moment.month, moment.day)
+    digits = re.sub(r"\D", "", str(value))
+    if kind == "cpf":
+        return digits if len(digits) == 11 else None
+    if kind == "cnpj":
+        return digits if len(digits) == 14 else None
+    if kind == "cep":
+        return digits if len(digits) == 8 else None
+    # telefone
+    if not digits:
+        return None
+    if len(digits) in (10, 11):
+        return f"55{digits}"
+    return digits
