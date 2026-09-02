@@ -35,7 +35,7 @@ class ParseTemporalTests(unittest.TestCase):
         self.assert_temporal("15/03/2026", date(2026, 3, 15), False)
 
     def test_year_first_with_slashes(self):
-        self.assert_temporal("2026-09-02", date(2026, 9, 2), False)
+        self.assert_temporal("2026/09/02", date(2026, 9, 2), False)
 
     def test_written_out_ptbr(self):
         self.assert_temporal("2 de setembro de 2026", date(2026, 9, 2), False)
