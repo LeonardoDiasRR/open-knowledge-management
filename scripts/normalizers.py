@@ -41,7 +41,6 @@ _ISO = re.compile(rf"^(\d{{4}})-(\d{{1,2}})-(\d{{1,2}}){_TIME_SUFFIX}$")
 _NUMERIC = re.compile(rf"^(\d{{1,4}})[/.\-](\d{{1,2}})[/.\-](\d{{2,4}}){_TIME_SUFFIX}$")
 _MONTH_NAME = re.compile(rf"^(\d{{1,2}})[/.-]([a-zç]{{3,9}})[/.-](\d{{2,4}}){_TIME_SUFFIX}$", re.IGNORECASE)
 _WRITTEN = re.compile(r"^(\d{1,2})\s+de\s+([a-zç]+)\.?(?:\s+de\s+)?(\d{4})$", re.IGNORECASE)
-_WRITTEN_TIME = re.compile(r"\s+(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?\s*(Z|[+-]\d{2}:?\d{2})?$")
 
 
 def is_blank(value: object) -> bool:
@@ -60,7 +59,10 @@ def _timezone(offset: str | None):
         return timezone.utc
     sign = 1 if offset[0] == "+" else -1
     digits = offset[1:].replace(":", "")
-    return timezone(sign * timedelta(seconds=int(digits[:2]) * 3600 + int(digits[2:]) * 60))
+    try:
+        return timezone(sign * timedelta(seconds=int(digits[:2]) * 3600 + int(digits[2:]) * 60))
+    except ValueError:
+        return None
 
 
 def _build(day: int, month: int, year: object, hour, minute, second, fraction, offset):
@@ -80,6 +82,8 @@ def _build(day: int, month: int, year: object, hour, minute, second, fraction, o
     except ValueError:
         return None
     zone = _timezone(offset)
+    if offset and zone is None:
+        return None
     if zone is not None:
         moment = moment.replace(tzinfo=zone).astimezone(timezone.utc).replace(tzinfo=None)
     return moment
@@ -98,6 +102,8 @@ def parse_temporal(value: object) -> tuple[date | datetime, bool] | None:
     datetime input) returns a naive `datetime` (tz offsets converted to UTC).
     """
     if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc)
         return value.replace(tzinfo=None), True
     if isinstance(value, date):
         return value, False
@@ -130,9 +136,6 @@ def parse_temporal(value: object) -> tuple[date | datetime, bool] | None:
         if month is None:
             return None
         year = int(match.group(3))
-        tail = _WRITTEN_TIME.search(text)
-        if tail:
-            return _outcome(_build(int(match.group(1)), month, year, *tail.groups()), True)
         return _outcome(_build(int(match.group(1)), month, year, None, None, None, None, None), False)
 
     match = _NUMERIC.match(text)

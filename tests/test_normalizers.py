@@ -1,6 +1,6 @@
 """Tests for the pure normalizer module (no DuckDB, no filesystem)."""
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 from scripts.normalizers import parse_temporal
 
@@ -68,6 +68,14 @@ class ParseTemporalTests(unittest.TestCase):
     def test_invalid_values_return_none(self):
         for raw in ("31/02/2025", "s/ data", "", "—", "sem data", "n/a", None, 123):
             self.assertIsNone(parse_temporal(raw), f"should not parse {raw!r}")
+
+    def test_invalid_utc_offset_is_unrecoverable(self):
+        self.assertIsNone(parse_temporal("2026-09-02T14:30:00+24:00"))
+        self.assertIsNone(parse_temporal("2026-09-02T14:30:00-99:00"))
+
+    def test_aware_datetime_is_converted_to_utc_naive(self):
+        aware = datetime(2026, 9, 2, 14, 30, tzinfo=timezone(timedelta(hours=-4)))
+        self.assert_temporal(aware, datetime(2026, 9, 2, 18, 30), True)
 
 
 if __name__ == "__main__":
